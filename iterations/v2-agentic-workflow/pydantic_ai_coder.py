@@ -22,6 +22,8 @@ model = OpenAIModel(llm, base_url=base_url, api_key=api_key)
 
 logfire.configure(send_to_logfire='if-token-present')
 
+is_ollama = "localhost" in base_url.lower()
+
 @dataclass
 class PydanticAIDeps:
     supabase: Client
@@ -88,7 +90,7 @@ async def get_embedding(text: str, openai_client: AsyncOpenAI) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
         response = await openai_client.embeddings.create(
-            model="text-embedding-3-small",
+            model= "nomic-embed-text:latest" if is_ollama else "text-embedding-3-small",
             input=text
         )
         return response.data[0].embedding
