@@ -22,6 +22,8 @@ base_url = os.getenv('BASE_URL', 'https://api.openai.com/v1')
 api_key = os.getenv('LLM_API_KEY', 'no-llm-api-key-provided')
 is_ollama = "localhost" in base_url.lower()
 
+embedding_model = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
+
 openai_client=None
 
 if is_ollama:
@@ -115,7 +117,7 @@ async def get_embedding(text: str) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
         response = await openai_client.embeddings.create(
-            model= "nomic-embed-text:latest" if is_ollama else "text-embedding-3-small",
+            model= embedding_model,
             input=text
         )
         return response.data[0].embedding
