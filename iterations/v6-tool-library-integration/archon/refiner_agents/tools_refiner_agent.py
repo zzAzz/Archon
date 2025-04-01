@@ -56,7 +56,7 @@ tools_refiner_agent = Agent(
 @tools_refiner_agent.system_prompt  
 def add_file_list(ctx: RunContext[str]) -> str:
     return f"""
-    \n\Here is the list of all the files that you can pull the contents of with the
+    \nHere is the list of all the files that you can pull the contents of with the
     'get_file_content' tool if the example/tool/MCP server is relevant to the
     agent the user is trying to build:\n 
     {"\n".join(ctx.deps.file_list)}
