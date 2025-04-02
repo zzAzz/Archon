@@ -54,7 +54,8 @@ pydantic_ai_coder = Agent(
 @pydantic_ai_coder.system_prompt  
 def add_reasoner_output(ctx: RunContext[str]) -> str:
     return f"""
-    \n\nAdditional thoughts/instructions from the reasoner LLM. 
+    
+    Additional thoughts/instructions from the reasoner LLM. 
     This scope includes documentation pages for you to search as well: 
     {ctx.deps.reasoner_output}
 
