@@ -46,13 +46,14 @@ advisor_agent = Agent(
 
 @advisor_agent.system_prompt  
 def add_file_list(ctx: RunContext[str]) -> str:
+    joined_files = "\n".join(ctx.deps.file_list)
     return f"""
     
     Here is the list of all the files that you can pull the contents of with the
     'get_file_content' tool if the example/tool/MCP server is relevant to the
     agent the user is trying to build:
-    
-    {"\n".join(ctx.deps.file_list)}
+
+    {joined_files}
     """
 
 @advisor_agent.tool_plain
