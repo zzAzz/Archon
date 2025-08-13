@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { SideNavigation } from './SideNavigation';
 import { ArchonChatPanel } from './ArchonChatPanel';
 import { X } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 import { credentialsService } from '../../services/credentialsService';
+import { isLmConfigured } from '../../utils/onboarding';
 /**
  * Props for the MainLayout component
  */
@@ -26,6 +27,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [backendReady, setBackendReady] = useState(false);
 
   // Check backend readiness
@@ -36,11 +38,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       const retryDelay = 1000;
       
       try {
+        // Create AbortController for proper timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         // Check if backend is responding with a simple health check
         const response = await fetch(`${credentialsService['baseUrl']}/health`, {
           method: 'GET',
-          timeout: 5000
-        } as any);
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
         
         if (response.ok) {
           const healthData = await response.json();
@@ -68,7 +76,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           throw new Error(`Backend health check failed: ${response.status}`);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        // Handle AbortError separately for timeout
+        const errorMessage = error instanceof Error 
+          ? (error.name === 'AbortError' ? 'Request timeout (5s)' : error.message)
+          : 'Unknown error';
         console.log(`Backend not ready yet (attempt ${retryCount + 1}/${maxRetries}):`, errorMessage);
         
         // Retry if we haven't exceeded max retries
@@ -90,6 +101,59 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
     }, 1000); // Wait 1 second for initial app startup
   }, [showToast, navigate]); // Removed backendReady from dependencies to prevent double execution
 
+  // Check for onboarding redirect after backend is ready
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      // Skip if not ready, already on onboarding, or already dismissed
+      if (!backendReady || location.pathname === '/onboarding') {
+        return;
+      }
+
+      // Check if onboarding was already dismissed
+      if (localStorage.getItem('onboardingDismissed') === 'true') {
+        return;
+      }
+
+      try {
+        // Fetch credentials in parallel
+        const [ragCreds, apiKeyCreds] = await Promise.all([
+          credentialsService.getCredentialsByCategory('rag_strategy'),
+          credentialsService.getCredentialsByCategory('api_keys')
+        ]);
+
+        // Check if LM is configured
+        const configured = isLmConfigured(ragCreds, apiKeyCreds);
+        
+        if (!configured) {
+          // Redirect to onboarding
+          navigate('/onboarding', { replace: true });
+        }
+      } catch (error) {
+        // Detailed error handling per alpha principles - fail loud but don't block
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorDetails = {
+          context: 'Onboarding configuration check',
+          pathname: location.pathname,
+          error: errorMessage,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Log with full context and stack trace
+        console.error('ONBOARDING_CHECK_FAILED:', errorDetails, error);
+        
+        // Make error visible to user but don't block app functionality
+        showToast(
+          `Configuration check failed: ${errorMessage}. You can manually configure in Settings.`,
+          'warning'
+        );
+        
+        // Let user continue - onboarding is optional, they can configure manually
+      }
+    };
+
+    checkOnboarding();
+  }, [backendReady, location.pathname, navigate, showToast]);
+
   return <div className="relative min-h-screen bg-white dark:bg-black overflow-hidden">
       {/* Fixed full-page background grid that doesn't scroll */}
       <div className="fixed inset-0 neon-grid pointer-events-none z-0"></div>
@@ -104,9 +168,22 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         </div>
       </div>
       {/* Floating Chat Button - Only visible when chat is closed */}
-      {!isChatOpen && <button onClick={() => setIsChatOpen(true)} className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md bg-gradient-to-b from-white/10 to-black/30 dark:from-white/10 dark:to-black/30 from-blue-100/80 to-blue-50/60 shadow-[0_0_20px_rgba(59,130,246,0.3)] dark:shadow-[0_0_20px_rgba(59,130,246,0.7)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] dark:hover:shadow-[0_0_25px_rgba(59,130,246,0.9)] transition-all duration-300 overflow-hidden border border-blue-200 dark:border-transparent" aria-label="Open Knowledge Assistant">
-          <img src="/logo-neon.svg" alt="Archon" className="w-7 h-7" />
-        </button>}
+      {!isChatOpen && (
+        <div className="fixed bottom-6 right-6 z-50 group">
+          <button 
+            disabled
+            className="w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md bg-gradient-to-b from-gray-100/80 to-gray-50/60 dark:from-gray-700/30 dark:to-gray-800/30 shadow-[0_0_10px_rgba(156,163,175,0.3)] dark:shadow-[0_0_10px_rgba(156,163,175,0.3)] cursor-not-allowed opacity-60 overflow-hidden border border-gray-300 dark:border-gray-600" 
+            aria-label="Knowledge Assistant - Coming Soon">
+            <img src="/logo-neon.svg" alt="Archon" className="w-7 h-7 grayscale opacity-50" />
+          </button>
+          {/* Tooltip */}
+          <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-800 dark:bg-gray-900 text-white text-sm rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap">
+            <div className="font-medium">Coming Soon</div>
+            <div className="text-xs text-gray-300">Knowledge Assistant is under development</div>
+            <div className="absolute bottom-0 right-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-800 dark:bg-gray-900"></div>
+          </div>
+        </div>
+      )}
       {/* Chat Sidebar - Slides in/out from right */}
       <div className="fixed top-0 right-0 h-full z-40 transition-transform duration-300 ease-in-out transform" style={{
       transform: isChatOpen ? 'translateX(0)' : 'translateX(100%)'
