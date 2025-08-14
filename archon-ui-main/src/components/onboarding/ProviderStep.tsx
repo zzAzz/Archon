@@ -42,6 +42,8 @@ export const ProviderStep = ({ onSaved, onSkip }: ProviderStepProps) => {
       });
 
       showToast('API key saved successfully!', 'success');
+      // Mark onboarding as dismissed when API key is saved
+      localStorage.setItem('onboardingDismissed', 'true');
       onSaved();
     } catch (error) {
       // Detailed error handling for critical configuration per alpha principles
@@ -87,6 +89,8 @@ export const ProviderStep = ({ onSaved, onSkip }: ProviderStepProps) => {
 
   const handleSkip = () => {
     showToast('You can configure your provider in Settings', 'info');
+    // Mark onboarding as dismissed when skipping
+    localStorage.setItem('onboardingDismissed', 'true');
     onSkip();
   };
 
@@ -180,10 +184,27 @@ export const ProviderStep = ({ onSaved, onSkip }: ProviderStepProps) => {
             <Button
               variant="primary"
               size="lg"
-              onClick={handleSkip}
+              onClick={async () => {
+                // Save the provider selection for non-OpenAI providers
+                try {
+                  await credentialsService.updateCredential({
+                    key: 'LLM_PROVIDER',
+                    value: provider,
+                    is_encrypted: false,
+                    category: 'rag_strategy'
+                  });
+                  showToast(`${provider === 'google' ? 'Google Gemini' : 'Ollama'} selected as provider`, 'success');
+                  // Mark onboarding as dismissed
+                  localStorage.setItem('onboardingDismissed', 'true');
+                  onSaved();
+                } catch (error) {
+                  console.error('Failed to save provider selection:', error);
+                  showToast('Failed to save provider selection', 'error');
+                }
+              }}
               className="flex-1"
             >
-              Continue to Settings
+              Continue with {provider === 'google' ? 'Gemini' : 'Ollama'}
             </Button>
           </div>
         </div>
