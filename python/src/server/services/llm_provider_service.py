@@ -108,6 +108,13 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
             )
             logger.info(f"Ollama client created successfully with base URL: {base_url}")
 
+        elif provider_name == "llamacpp":
+            client = openai.AsyncOpenAI(
+                api_key="llamacpp",
+                base_url=base_url or "http://192.168.11.100:8080/v1",
+            )
+            logger.info("llama.cpp client created successfully")
+
         elif provider_name == "google":
             if not api_key:
                 raise ValueError("Google API key not found")
