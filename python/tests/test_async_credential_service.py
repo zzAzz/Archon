@@ -57,7 +57,7 @@ class TestAsyncCredentialService:
             {
                 "id": 2,
                 "key": "MODEL_CHOICE",
-                "value": "gpt-4.1-nano",
+                "value": "qwen3-30b",
                 "encrypted_value": None,
                 "is_encrypted": False,
                 "category": "rag_strategy",
@@ -217,7 +217,7 @@ class TestAsyncCredentialService:
             assert openai_key_cache["is_encrypted"] is True
 
             # Plain text values should be stored directly
-            assert credential_service._cache["MODEL_CHOICE"] == "gpt-4.1-nano"
+            assert credential_service._cache["MODEL_CHOICE"] == "qwen3-30b"
 
     @pytest.mark.asyncio
     async def test_get_credentials_by_category(self, mock_supabase_client):
@@ -228,7 +228,7 @@ class TestAsyncCredentialService:
         rag_data = [
             {
                 "key": "MODEL_CHOICE",
-                "value": "gpt-4.1-nano",
+                "value": "qwen3-30b",
                 "is_encrypted": False,
                 "description": "Model choice",
             },
@@ -249,7 +249,7 @@ class TestAsyncCredentialService:
             # Should only return rag_strategy credentials
             assert "MODEL_CHOICE" in result
             assert "MAX_TOKENS" in result
-            assert result["MODEL_CHOICE"] == "gpt-4.1-nano"
+            assert result["MODEL_CHOICE"] == "qwen3-30b"
             assert result["MAX_TOKENS"] == "1000"
 
     @pytest.mark.asyncio
@@ -260,7 +260,7 @@ class TestAsyncCredentialService:
         # Setup cache directly instead of mocking complex database responses
         credential_service._cache = {
             "LLM_PROVIDER": "openai",
-            "MODEL_CHOICE": "gpt-4.1-nano",
+            "MODEL_CHOICE": "qwen3-30b",
             "OPENAI_API_KEY": {
                 "encrypted_value": "encrypted_key",
                 "is_encrypted": True,
@@ -281,7 +281,7 @@ class TestAsyncCredentialService:
             },
             {
                 "key": "MODEL_CHOICE",
-                "value": "gpt-4.1-nano",
+                "value": "qwen3-30b",
                 "is_encrypted": False,
                 "description": "Model choice",
             },
@@ -294,7 +294,7 @@ class TestAsyncCredentialService:
 
                 assert result["provider"] == "openai"
                 assert result["api_key"] == "decrypted_key"
-                assert result["chat_model"] == "gpt-4.1-nano"
+                assert result["chat_model"] == "qwen3-30b"
 
     @pytest.mark.asyncio
     async def test_get_active_provider_basic(self, mock_supabase_client):
@@ -364,7 +364,7 @@ class TestAsyncCredentialService:
         """Test direct cache access pattern used in converted sync functions"""
         # Setup cache
         credential_service._cache = {
-            "MODEL_CHOICE": "gpt-4.1-nano",
+            "MODEL_CHOICE": "qwen3-30b",
             "OPENAI_API_KEY": {"encrypted_value": "encrypted_key", "is_encrypted": True},
         }
         credential_service._cache_initialized = True
@@ -372,7 +372,7 @@ class TestAsyncCredentialService:
         # Test simple cache access
         if credential_service._cache_initialized and "MODEL_CHOICE" in credential_service._cache:
             result = credential_service._cache["MODEL_CHOICE"]
-            assert result == "gpt-4.1-nano"
+            assert result == "qwen3-30b"
 
         # Test encrypted value access
         if credential_service._cache_initialized and "OPENAI_API_KEY" in credential_service._cache:

@@ -34,13 +34,13 @@ async def generate_contextual_embedding(
     try:
         from ...services.credential_service import credential_service
 
-        model_choice = await credential_service.get_credential("MODEL_CHOICE", "gpt-4.1-nano")
+        model_choice = await credential_service.get_credential("MODEL_CHOICE", "qwen3-30b")
     except Exception as e:
         # Fallback to environment variable or default
         search_logger.warning(
             f"Failed to get MODEL_CHOICE from credential service: {e}, using fallback"
         )
-        model_choice = os.getenv("MODEL_CHOICE", "gpt-4.1-nano")
+        model_choice = os.getenv("MODEL_CHOICE", "qwen3-30b")
 
     search_logger.debug(f"Using MODEL_CHOICE: {model_choice}")
 
@@ -116,7 +116,7 @@ async def _get_model_choice(provider: str | None = None) -> str:
 
     # Get the active provider configuration
     provider_config = await credential_service.get_active_provider("llm")
-    model = provider_config.get("chat_model", "gpt-4.1-nano")
+    model = provider_config.get("chat_model", "qwen3-30b")
 
     search_logger.debug(f"Using model from credential service: {model}")
 

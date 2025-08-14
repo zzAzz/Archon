@@ -111,9 +111,22 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
         elif provider_name == "llamacpp":
             client = openai.AsyncOpenAI(
                 api_key="llamacpp",
-                base_url=base_url or "http://192.168.11.100:8080/v1",
+                base_url=base_url
+                or (
+                    "http://192.168.11.100:8081/v1"
+                    if use_embedding_provider
+                    else "http://192.168.11.100:8080/v1"
+                ),
             )
-            logger.info("llama.cpp client created successfully")
+            logger.info(
+                "llama.cpp client created successfully with base URL: %s",
+                base_url
+                or (
+                    "http://192.168.11.100:8081/v1"
+                    if use_embedding_provider
+                    else "http://192.168.11.100:8080/v1"
+                ),
+            )
 
         elif provider_name == "google":
             if not api_key:
@@ -182,6 +195,8 @@ async def get_embedding_model(provider: str | None = None) -> str:
         elif provider_name == "ollama":
             # Ollama default embedding model
             return "nomic-embed-text"
+        elif provider_name == "llamacpp":
+            return "/data/nomic-embed-text-v2-moe"
         elif provider_name == "google":
             # Google's embedding model
             return "text-embedding-004"
