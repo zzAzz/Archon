@@ -85,6 +85,17 @@ class TestAsyncLLMProviderService:
             "embedding_model": "text-embedding-004",
         }
 
+    @pytest.fixture
+    def llamacpp_provider_config(self):
+        """Standard llama.cpp provider config"""
+        return {
+            "provider": "llamacpp",
+            "api_key": "llamacpp",
+            "base_url": None,
+            "chat_model": "qwen3-30b",
+            "embedding_model": "/data/nomic-embed-text-v2-moe",
+        }
+
     @pytest.mark.asyncio
     async def test_get_llm_client_openai_success(
         self, mock_credential_service, openai_provider_config
@@ -129,6 +140,66 @@ class TestAsyncLLMProviderService:
                     mock_openai.assert_called_once_with(
                         api_key="ollama", base_url="http://localhost:11434/v1"
                     )
+
+    @pytest.mark.asyncio
+    async def test_get_llm_client_llamacpp_success(
+        self, mock_credential_service, llamacpp_provider_config
+    ):
+        """Test successful llama.cpp client creation"""
+        mock_credential_service.get_active_provider.return_value = (
+            llamacpp_provider_config
+        )
+
+        with patch(
+            "src.server.services.llm_provider_service.credential_service",
+            mock_credential_service,
+        ):
+            with patch(
+                "src.server.services.llm_provider_service.openai.AsyncOpenAI"
+            ) as mock_openai:
+                mock_client = MagicMock()
+                mock_openai.return_value = mock_client
+
+                async with get_llm_client() as client:
+                    assert client == mock_client
+                    mock_openai.assert_called_once_with(
+                        api_key="llamacpp",
+                        base_url="http://192.168.11.100:8080/v1",
+                    )
+
+                mock_credential_service.get_active_provider.assert_called_once_with(
+                    "llm"
+                )
+
+    @pytest.mark.asyncio
+    async def test_get_llm_client_llamacpp_embedding_success(
+        self, mock_credential_service, llamacpp_provider_config
+    ):
+        """Test llama.cpp client creation for embedding provider"""
+        mock_credential_service.get_active_provider.return_value = (
+            llamacpp_provider_config
+        )
+
+        with patch(
+            "src.server.services.llm_provider_service.credential_service",
+            mock_credential_service,
+        ):
+            with patch(
+                "src.server.services.llm_provider_service.openai.AsyncOpenAI"
+            ) as mock_openai:
+                mock_client = MagicMock()
+                mock_openai.return_value = mock_client
+
+                async with get_llm_client(use_embedding_provider=True) as client:
+                    assert client == mock_client
+                    mock_openai.assert_called_once_with(
+                        api_key="llamacpp",
+                        base_url="http://192.168.11.100:8081/v1",
+                    )
+
+                mock_credential_service.get_active_provider.assert_called_once_with(
+                    "embedding"
+                )
 
     @pytest.mark.asyncio
     async def test_get_llm_client_google_success(
@@ -302,6 +373,22 @@ class TestAsyncLLMProviderService:
         ):
             model = await get_embedding_model()
             assert model == "nomic-embed-text"
+
+    @pytest.mark.asyncio
+    async def test_get_embedding_model_llamacpp_success(
+        self, mock_credential_service, llamacpp_provider_config
+    ):
+        """Test getting embedding model for llama.cpp provider"""
+        mock_credential_service.get_active_provider.return_value = (
+            llamacpp_provider_config
+        )
+
+        with patch(
+            "src.server.services.llm_provider_service.credential_service",
+            mock_credential_service,
+        ):
+            model = await get_embedding_model()
+            assert model == "/data/nomic-embed-text-v2-moe"
 
     @pytest.mark.asyncio
     async def test_get_embedding_model_google_success(

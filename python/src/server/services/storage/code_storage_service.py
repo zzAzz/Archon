@@ -29,12 +29,12 @@ def _get_model_choice() -> str:
         if credential_service._cache_initialized and "MODEL_CHOICE" in credential_service._cache:
             model = credential_service._cache["MODEL_CHOICE"]
         else:
-            model = os.getenv("MODEL_CHOICE", "gpt-4.1-nano")
+            model = os.getenv("MODEL_CHOICE", "qwen3-30b")
         search_logger.debug(f"Using model choice: {model}")
         return model
     except Exception as e:
         search_logger.warning(f"Error getting model choice: {e}, using default")
-        return "gpt-4.1-nano"
+        return "qwen3-30b"
 
 
 def _get_max_workers() -> int:

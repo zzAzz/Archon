@@ -71,7 +71,7 @@ INSERT INTO archon_settings (key, value, is_encrypted, category, description) VA
 ('MCP_TRANSPORT', 'dual', false, 'server_config', 'MCP server transport mode - sse (web clients), stdio (IDE clients), or dual (both)'),
 ('HOST', 'localhost', false, 'server_config', 'Host to bind to if using sse as the transport (leave empty if using stdio)'),
 ('PORT', '8051', false, 'server_config', 'Port to listen on if using sse as the transport (leave empty if using stdio)'),
-('MODEL_CHOICE', 'gpt-4.1-nano', false, 'rag_strategy', 'The LLM you want to use for summaries and contextual embeddings. Generally this is a very cheap and fast LLM like gpt-4.1-nano');
+('MODEL_CHOICE', 'qwen3-30b', false, 'rag_strategy', 'The LLM you want to use for summaries and contextual embeddings.');
 
 -- RAG Strategy Configuration (all default to true)
 INSERT INTO archon_settings (key, value, is_encrypted, category, description) VALUES
@@ -93,8 +93,8 @@ INSERT INTO archon_settings (key, encrypted_value, is_encrypted, category, descr
 -- LLM Provider configuration settings
 INSERT INTO archon_settings (key, value, is_encrypted, category, description) VALUES
 ('LLM_PROVIDER', 'openai', false, 'rag_strategy', 'LLM provider to use: openai, ollama, or google'),
-('LLM_BASE_URL', NULL, false, 'rag_strategy', 'Custom base URL for LLM provider (mainly for Ollama, e.g., http://localhost:11434/v1)'),
-('EMBEDDING_MODEL', 'text-embedding-3-small', false, 'rag_strategy', 'Embedding model for vector search and similarity matching (required for all embedding operations)')
+('LLM_BASE_URL', 'http://192.168.11.100:8080/v1', false, 'rag_strategy', 'Custom base URL for LLM provider'),
+('EMBEDDING_MODEL', '/data/nomic-embed-text-v2-moe', false, 'rag_strategy', 'Embedding model for vector search and similarity matching (required for all embedding operations)')
 ON CONFLICT (key) DO NOTHING;
 
 -- Add provider API key placeholders
