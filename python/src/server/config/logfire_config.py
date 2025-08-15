@@ -110,9 +110,12 @@ def setup_logfire(
     if not handlers:
         handlers.append(logging.StreamHandler())
 
+    # Read LOG_LEVEL from environment
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    
     # Configure root logging
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, log_level, logging.INFO),
         format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=handlers,
