@@ -112,7 +112,7 @@ def setup_logfire(
 
     # Read LOG_LEVEL from environment
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    
+
     # Configure root logging
     logging.basicConfig(
         level=getattr(logging, log_level, logging.INFO),
