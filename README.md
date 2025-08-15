@@ -62,6 +62,8 @@ This new vision for Archon replaces the old one (the agenteer). Archon used to b
 
    NOTE: Supabase introduced a new type of service key but use the legacy one (the longer one).
 
+   OPTIONAL: If you want to enable the reranking RAG strategy, uncomment lines 20-22 in `python\requirements.server.txt`. This will significantly increase the size of the Archon Server container which is why it's off by default.
+
 3. **Database Setup**: In your [Supabase project](https://supabase.com/dashboard) SQL Editor, copy, paste, and execute the contents of `migration/complete_setup.sql`
 
 4. **Start Services**:

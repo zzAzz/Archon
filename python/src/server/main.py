@@ -48,12 +48,10 @@ from .socketio_app import create_socketio_app
 # Import missing dependencies that the modular APIs need
 try:
     from crawl4ai import AsyncWebCrawler, BrowserConfig
-    from sentence_transformers import CrossEncoder
 except ImportError:
     # These are optional dependencies for full functionality
     AsyncWebCrawler = None
     BrowserConfig = None
-    CrossEncoder = None
 
 # Logger will be initialized after credentials are loaded
 logger = logging.getLogger(__name__)
