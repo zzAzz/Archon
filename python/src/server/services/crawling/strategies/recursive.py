@@ -61,7 +61,7 @@ class RecursiveCrawlStrategy:
                 await progress_callback('error', 0, 'Crawler not available')
             return []
         
-        # Load settings from database
+        # Load settings from database - fail fast on configuration errors
         try:
             settings = await credential_service.get_credentials_by_category("rag_strategy")
             batch_size = int(settings.get("CRAWL_BATCH_SIZE", "50"))
@@ -69,11 +69,16 @@ class RecursiveCrawlStrategy:
                 max_concurrent = int(settings.get("CRAWL_MAX_CONCURRENT", "10"))
             memory_threshold = float(settings.get("MEMORY_THRESHOLD_PERCENT", "80"))
             check_interval = float(settings.get("DISPATCHER_CHECK_INTERVAL", "0.5"))
+        except (ValueError, KeyError, TypeError) as e:
+            # Critical configuration errors should fail fast in alpha
+            logger.error(f"Invalid crawl settings format: {e}", exc_info=True)
+            raise ValueError(f"Failed to load crawler configuration: {e}")
         except Exception as e:
-            logger.warning(f"Failed to load crawl settings: {e}, using defaults")
+            # For non-critical errors (e.g., network issues), use defaults but log prominently
+            logger.error(f"Failed to load crawl settings from database: {e}, using defaults", exc_info=True)
             batch_size = 50
             if max_concurrent is None:
-                max_concurrent = 10
+                max_concurrent = 10  # Safe default to prevent memory issues
             memory_threshold = 80.0
             check_interval = 0.5
             settings = {}  # Empty dict for defaults
