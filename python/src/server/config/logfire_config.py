@@ -122,6 +122,11 @@ def setup_logfire(
         force=True,
     )
 
+    # Suppress noisy third-party library logs
+    # These libraries log low-level details that are rarely useful
+    logging.getLogger("hpack").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     _logfire_configured = True
     logging.info(
         f"📋 Logging configured (Logfire: {'enabled' if _logfire_enabled else 'disabled'})"
