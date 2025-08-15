@@ -10,6 +10,7 @@ from urllib.parse import urldefrag
 from crawl4ai import CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
 from ....config.logfire_config import get_logger
 from ...credential_service import credential_service
+from ..helpers.url_handler import URLHandler
 
 logger = get_logger(__name__)
 
@@ -27,6 +28,7 @@ class RecursiveCrawlStrategy:
         """
         self.crawler = crawler
         self.markdown_generator = markdown_generator
+        self.url_handler = URLHandler()
     
     async def crawl_recursive_with_progress(
         self,
@@ -190,8 +192,11 @@ class RecursiveCrawlStrategy:
                         # Find internal links for next depth
                         for link in result.links.get("internal", []):
                             next_url = normalize_url(link["href"])
-                            if next_url not in visited:
+                            # Skip binary files and already visited URLs
+                            if next_url not in visited and not self.url_handler.is_binary_file(next_url):
                                 next_level_urls.add(next_url)
+                            elif self.url_handler.is_binary_file(next_url):
+                                logger.debug(f"Skipping binary file from crawl queue: {next_url}")
                     else:
                         logger.warning(f"Failed to crawl {original_url}: {getattr(result, 'error_message', 'Unknown error')}")
                     
