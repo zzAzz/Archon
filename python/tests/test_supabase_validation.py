@@ -4,7 +4,7 @@ Tests the JWT-based validation of anon vs service keys.
 """
 
 import pytest
-import jwt
+from jose import jwt
 from unittest.mock import patch, MagicMock
 
 from src.server.config.config import (
@@ -131,12 +131,8 @@ def test_config_handles_invalid_jwt():
             assert config.supabase_service_key == "invalid-jwt-key"
 
 
-def test_config_warns_on_unknown_role():
-    """Test that configuration loading warns for unknown roles.
-    
-    NOTE: This currently prints a warning but doesn't fail.
-    TODO: Per alpha principles, unknown key types should fail fast, not just warn.
-    """
+def test_config_fails_on_unknown_role():
+    """Test that configuration loading fails fast for unknown roles per alpha principles."""
     # Create a mock key with unknown role
     unknown_payload = {"role": "custom_role", "iss": "supabase"}
     mock_unknown_key = jwt.encode(unknown_payload, "secret", algorithm="HS256")
@@ -151,15 +147,13 @@ def test_config_warns_on_unknown_role():
         },
         clear=True  # Clear all env vars to ensure isolation
     ):
-        with patch("builtins.print") as mock_print:
-            # Should not raise an exception but should print warning
-            config = load_environment_config()
-            assert config.supabase_service_key == mock_unknown_key
+        # Should raise ConfigurationError for unknown role
+        with pytest.raises(ConfigurationError) as exc_info:
+            load_environment_config()
 
-            # Check that warning was printed
-            mock_print.assert_called_once()
-            call_args = mock_print.call_args[0][0]
-            assert "WARNING: Unknown Supabase key role 'custom_role'" in call_args
+        error_message = str(exc_info.value)
+        assert "Unknown Supabase key role 'custom_role'" in error_message
+        assert "Expected 'service_role'" in error_message
 
 
 def test_config_raises_on_anon_key_with_port():

@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-import jwt
+from jose import jwt
 
 
 class ConfigurationError(Exception):
@@ -64,7 +64,18 @@ def validate_supabase_key(supabase_key: str) -> tuple[bool, str]:
     try:
         # Decode JWT without verification to check the 'role' claim
         # We don't verify the signature since we only need to check the role
-        decoded = jwt.decode(supabase_key, options={"verify_signature": False})
+        # Also skip all other validations (aud, exp, etc) since we only care about the role
+        decoded = jwt.decode(
+            supabase_key, 
+            '', 
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+                "verify_nbf": False,
+                "verify_iat": False
+            }
+        )
         role = decoded.get("role")
 
         if role == "anon":
@@ -134,7 +145,12 @@ def load_environment_config() -> EnvironmentConfig:
             )
         elif key_message.startswith("UNKNOWN_KEY_TYPE:"):
             role = key_message.split(":", 1)[1]
-            print(f"WARNING: Unknown Supabase key role '{role}'. Proceeding but may cause issues.")
+            raise ConfigurationError(
+                f"CRITICAL: Unknown Supabase key role '{role}'.\n\n"
+                f"Expected 'service_role' but found '{role}'.\n"
+                f"This key type is not supported and will likely cause failures.\n\n"
+                f"Please use a valid service_role key from your Supabase dashboard."
+            )
         # For UNABLE_TO_VALIDATE, we continue silently
 
     # Optional environment variables with defaults
