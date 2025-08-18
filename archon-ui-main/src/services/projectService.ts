@@ -561,9 +561,9 @@ export const projectService = {
   /**
    * Get a specific document with full content
    */
-  async getDocument(docId: string): Promise<any> {
+  async getDocument(projectId: string, docId: string): Promise<any> {
     try {
-      const response = await callAPI<{document: any}>(`/api/docs/${docId}`);
+      const response = await callAPI<{document: any}>(`/api/projects/${projectId}/docs/${docId}`);
       return response.document;
     } catch (error) {
       console.error(`Failed to get document ${docId}:`, error);
@@ -590,9 +590,9 @@ export const projectService = {
   /**
    * Update an existing document
    */
-  async updateDocument(docId: string, updates: any): Promise<any> {
+  async updateDocument(projectId: string, docId: string, updates: any): Promise<any> {
     try {
-      const response = await callAPI<{document: any}>(`/api/docs/${docId}`, {
+      const response = await callAPI<{document: any}>(`/api/projects/${projectId}/docs/${docId}`, {
         method: 'PUT',
         body: JSON.stringify(updates)
       });
@@ -606,9 +606,9 @@ export const projectService = {
   /**
    * Delete a document
    */
-  async deleteDocument(docId: string): Promise<void> {
+  async deleteDocument(projectId: string, docId: string): Promise<void> {
     try {
-      await callAPI<void>(`/api/docs/${docId}`, { method: 'DELETE' });
+      await callAPI<void>(`/api/projects/${projectId}/docs/${docId}`, { method: 'DELETE' });
     } catch (error) {
       console.error(`Failed to delete document ${docId}:`, error);
       throw error;
