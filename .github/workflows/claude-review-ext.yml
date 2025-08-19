@@ -63,14 +63,15 @@ jobs:
             const fs = require('fs');
             fs.writeFileSync('pr-info.zip', Buffer.from(download.data));
             
-            // Extract the artifact
-            const { exec } = require('child_process');
-            await new Promise((resolve, reject) => {
-              exec('unzip -o pr-info.zip', (error, stdout, stderr) => {
-                if (error) reject(error);
-                else resolve(stdout);
-              });
-            });
+            // Extract the artifact using execSync instead of exec to avoid declaration issues
+            const childProcess = require('child_process');
+            try {
+              childProcess.execSync('unzip -o pr-info.zip');
+              console.log('Artifact extracted successfully');
+            } catch (error) {
+              core.setFailed(`Failed to extract artifact: ${error.message}`);
+              return;
+            }
             
             // Read and parse PR info
             const prInfo = JSON.parse(fs.readFileSync('pr-info.json', 'utf8'));
