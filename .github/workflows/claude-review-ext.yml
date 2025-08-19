@@ -126,7 +126,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           # SECURITY: Checkout base branch, not PR code
-          ref: ${{ github.event.workflow_run.head_branch }}
+          # We'll checkout the default branch first, then switch to the PR's base branch after downloading PR info
           fetch-depth: 0
       
       - name: Download PR Info
@@ -177,16 +177,24 @@ jobs:
             core.exportVariable('PR_TITLE', prInfo.prTitle);
             core.exportVariable('PR_AUTHOR', prInfo.prAuthor);
             core.exportVariable('HEAD_SHA', prInfo.headSha);
+            core.exportVariable('PR_BASE_BRANCH', prInfo.baseBranch);
             
             console.log(`Loaded PR #${prInfo.prNumber} information`);
+            console.log(`Base branch: ${prInfo.baseBranch}`);
+      
+      - name: Switch to PR Base Branch
+        run: |
+          # Switch to the PR's actual target base branch
+          git checkout ${{ env.PR_BASE_BRANCH }}
+          echo "Switched to base branch: ${{ env.PR_BASE_BRANCH }}"
       
       - name: Fetch PR Branch for Analysis
         run: |
           # Fetch the PR branch to analyze (but don't checkout)
           git fetch origin pull/${{ env.PR_NUMBER }}/head:pr-branch
           
-          # Create a safe diff for analysis
-          git diff origin/${{ github.event.workflow_run.head_branch }}...pr-branch > pr-diff.patch
+          # Create a safe diff for analysis against the PR's target base branch
+          git diff origin/${{ env.PR_BASE_BRANCH }}...pr-branch > pr-diff.patch
           
           echo "Fetched PR branch for analysis (not checked out for security)"
       
