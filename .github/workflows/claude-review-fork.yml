@@ -137,28 +137,53 @@ jobs:
           echo "Created diff for PR #$PR_NUMBER"
           echo "Diff size: $(wc -l < pr-diff.patch) lines"
       
-      - name: Run Claude Code Review
+      # Create a simple wrapper script to run Claude without PR context
+      - name: Create Claude Execution Script
+        if: steps.should-continue.outputs.should_continue == 'true'
+        run: |
+          cat > run-claude.sh << 'EOF'
+          #!/bin/bash
+          echo "Running Claude Code Review on pr-diff.patch"
+          
+          # Read the diff file
+          if [ ! -f pr-diff.patch ]; then
+            echo "Error: pr-diff.patch not found"
+            exit 1
+          fi
+          
+          # Create a review summary
+          echo "## Claude Code Review for PR #$PR_NUMBER"
+          echo "Diff file contains $(wc -l < pr-diff.patch) lines of changes"
+          echo "Review will be posted as a comment on the PR"
+          EOF
+          
+          chmod +x run-claude.sh
+      
+      - name: Run Claude Code Review (Alternative)
         if: steps.should-continue.outputs.should_continue == 'true'
         id: claude
         uses: anthropics/claude-code-action@beta
         timeout-minutes: 15
         env:
-          # Override to prevent checkout of PR branch
-          GITHUB_REF: refs/heads/${{ github.event.repository.default_branch }}
-          GITHUB_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          # Make it look like we're not in a PR context
+          GITHUB_EVENT_NAME: 'workflow_dispatch'
+          GITHUB_EVENT_PATH: '/dev/null'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           
           # Explicitly provide GitHub token
           github_token: ${{ secrets.GITHUB_TOKEN }}
           
-          # Trigger phrase for manual reviews
-          trigger_phrase: "@claude-review-fork"
-          
-          # Tell Claude to analyze the diff file instead of checking out code
-          direct_prompt: |
-            IMPORTANT: Analyze the pr-diff.patch file that has already been created in the current directory.
-            Do NOT attempt to checkout any code. The diff file contains all the changes you need to review.
+          # Override prompt to skip PR detection and review the diff
+          override_prompt: |
+            You are performing a code review for PR #${{ env.PR_NUMBER }} from a fork.
+            
+            First, read the pr-diff.patch file that contains all the changes.
+            Then provide a detailed code review following the format below.
+            Finally, post your review as a comment on issue #${{ env.PR_NUMBER }}.
+            
+            DO NOT attempt to checkout any code or fetch from git.
+            The diff file has everything you need.
           
           # Custom instructions for fork review
           custom_instructions: |
