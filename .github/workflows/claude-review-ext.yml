@@ -1,0 +1,385 @@
+name: Claude Review External - Stage 2 (Secure Review)
+
+# This workflow runs after Stage 1 completes
+# It has access to secrets and performs the actual Claude review
+# Security: Runs in the context of the base repository, not the fork
+
+on:
+  workflow_run:
+    workflows: ["Claude Review External - Stage 1 (PR Info Collection)"]
+    types: [completed]
+
+jobs:
+  check-authorization:
+    # Only run if Stage 1 completed successfully
+    if: github.event.workflow_run.conclusion == 'success'
+    
+    runs-on: ubuntu-latest
+    
+    outputs:
+      authorized: ${{ steps.check.outputs.authorized }}
+      pr_number: ${{ steps.check.outputs.pr_number }}
+      comment_author: ${{ steps.check.outputs.comment_author }}
+      trigger_phrase: ${{ steps.check.outputs.trigger_phrase }}
+    
+    permissions:
+      actions: read
+      pull-requests: read
+    
+    steps:
+      - name: Download PR Info Artifact
+        uses: actions/github-script@v7
+        id: download-artifact
+        with:
+          script: |
+            // Get artifacts from the workflow run
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ${{ github.event.workflow_run.id }}
+            });
+            
+            const matchArtifact = artifacts.data.artifacts.find(artifact => 
+              artifact.name.startsWith('pr-info-')
+            );
+            
+            if (!matchArtifact) {
+              core.setFailed('No PR info artifact found');
+              return;
+            }
+            
+            // Download the artifact
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchArtifact.id,
+              archive_format: 'zip'
+            });
+            
+            const fs = require('fs');
+            const path = require('path');
+            fs.writeFileSync('pr-info.zip', Buffer.from(download.data));
+            
+            // Extract the artifact
+            const { exec } = require('child_process');
+            await new Promise((resolve, reject) => {
+              exec('unzip -o pr-info.zip', (error, stdout, stderr) => {
+                if (error) reject(error);
+                else resolve(stdout);
+              });
+            });
+            
+            console.log('Artifact downloaded and extracted');
+      
+      - name: Check Authorization
+        id: check
+        run: |
+          # Read PR info
+          PR_INFO=$(cat pr-info.json)
+          PR_NUMBER=$(echo "$PR_INFO" | jq -r '.prNumber')
+          COMMENT_AUTHOR=$(echo "$PR_INFO" | jq -r '.commentAuthor // .prAuthor')
+          TRIGGER_PHRASE=$(echo "$PR_INFO" | jq -r '.triggerPhrase // ""')
+          EVENT_NAME=$(echo "$PR_INFO" | jq -r '.eventName')
+          
+          echo "PR Number: $PR_NUMBER"
+          echo "Comment Author: $COMMENT_AUTHOR"
+          echo "Trigger Phrase: $TRIGGER_PHRASE"
+          echo "Event: $EVENT_NAME"
+          
+          # Check if this was triggered by a comment with the right phrase
+          AUTHORIZED="false"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            # Automatic review for all PRs
+            AUTHORIZED="true"
+            echo "Authorized: Automatic review for PR event"
+          elif [[ "$TRIGGER_PHRASE" == "@claude-review-ext" ]]; then
+            # Check if user is authorized
+            AUTHORIZED_USERS='["Wirasm", "coleam00", "sean-eskerium"]'
+            if echo "$AUTHORIZED_USERS" | jq -e --arg user "$COMMENT_AUTHOR" 'contains([$user])' > /dev/null; then
+              AUTHORIZED="true"
+              echo "Authorized: $COMMENT_AUTHOR is in authorized users list"
+            else
+              echo "Not authorized: $COMMENT_AUTHOR is not in authorized users list"
+            fi
+          fi
+          
+          echo "authorized=$AUTHORIZED" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "comment_author=$COMMENT_AUTHOR" >> $GITHUB_OUTPUT
+          echo "trigger_phrase=$TRIGGER_PHRASE" >> $GITHUB_OUTPUT
+
+  claude-review:
+    needs: check-authorization
+    if: needs.check-authorization.outputs.authorized == 'true'
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read      # Read repository contents
+      pull-requests: write # Comment on PRs
+      issues: write       # Comment on issues
+      actions: read       # Read CI results
+      id-token: write     # Required for OIDC authentication
+    
+    steps:
+      - name: Checkout Repository (Base Branch)
+        uses: actions/checkout@v4
+        with:
+          # SECURITY: Checkout base branch, not PR code
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+      
+      - name: Download PR Info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Get artifacts from the workflow run
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ${{ github.event.workflow_run.id }}
+            });
+            
+            const matchArtifact = artifacts.data.artifacts.find(artifact => 
+              artifact.name.startsWith('pr-info-')
+            );
+            
+            if (!matchArtifact) {
+              core.setFailed('No PR info artifact found');
+              return;
+            }
+            
+            // Download the artifact
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchArtifact.id,
+              archive_format: 'zip'
+            });
+            
+            const fs = require('fs');
+            fs.writeFileSync('pr-info.zip', Buffer.from(download.data));
+            
+            // Extract the artifact
+            const { exec } = require('child_process');
+            await new Promise((resolve, reject) => {
+              exec('unzip -o pr-info.zip', (error, stdout, stderr) => {
+                if (error) reject(error);
+                else resolve(stdout);
+              });
+            });
+            
+            // Read and parse PR info
+            const prInfo = JSON.parse(fs.readFileSync('pr-info.json', 'utf8'));
+            
+            // Save key information as environment variables
+            core.exportVariable('PR_NUMBER', prInfo.prNumber);
+            core.exportVariable('PR_TITLE', prInfo.prTitle);
+            core.exportVariable('PR_AUTHOR', prInfo.prAuthor);
+            core.exportVariable('HEAD_SHA', prInfo.headSha);
+            
+            console.log(`Loaded PR #${prInfo.prNumber} information`);
+      
+      - name: Fetch PR Branch for Analysis
+        run: |
+          # Fetch the PR branch to analyze (but don't checkout)
+          git fetch origin pull/${{ env.PR_NUMBER }}/head:pr-branch
+          
+          # Create a safe diff for analysis
+          git diff origin/${{ github.event.workflow_run.head_branch }}...pr-branch > pr-diff.patch
+          
+          echo "Fetched PR branch for analysis (not checked out for security)"
+      
+      - name: Post Starting Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ env.PR_NUMBER }},
+              body: `🤖 **Claude Review (External PR) Starting...**\n\nAnalyzing PR changes in a secure environment. This may take a few minutes.`
+            });
+      
+      - name: Run Claude Code Review
+        id: claude
+        uses: anthropics/claude-code-action@beta
+        timeout-minutes: 15
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          
+          # Use the external review trigger phrase
+          trigger_phrase: "@claude-review-ext"
+          
+          # Custom context for PR review
+          pr_number: ${{ env.PR_NUMBER }}
+          
+          # Review-specific instructions (same as claude-review.yml)
+          custom_instructions: |
+            You are performing a CODE REVIEW for an EXTERNAL PULL REQUEST. 
+            This is a secure two-stage review process for PRs from forks.
+            
+            ## Security Context
+            You are running in a secure environment with access to repository secrets.
+            The PR code has been fetched but NOT checked out for security reasons.
+            Review the changes in pr-diff.patch file.
+            
+            ## Your Role
+            You are reviewing code for Archon V2 Alpha, a local-first AI knowledge management system in early alpha stage.
+            
+            ## Architecture Context
+            - Frontend: React + TypeScript + Vite (port 3737)
+            - Backend: FastAPI + Socket.IO + Python (port 8181)
+            - MCP Service: MCP protocol server (port 8051)
+            - Agents Service: PydanticAI agents (port 8052)
+            - Database: Supabase (PostgreSQL + pgvector)
+            
+            ## Review Process
+            1. **Understand Changes**
+               - Review the pr-diff.patch file to see all changes
+               - Check what files were changed and understand the context
+               - Analyze the impact across all services (frontend, backend, MCP, agents)
+               - Consider interactions between components
+            
+            ## Review Focus Areas
+            
+            ### 1. Code Quality - Backend (Python)
+            - Type hints on all functions and classes
+            - Pydantic v2 models for data validation (ConfigDict not class Config, model_dump() not dict())
+            - No print() statements (use logging instead)
+            - Proper error handling with detailed error messages
+            - Following PEP 8
+            - Google style docstrings where appropriate
+            
+            ### 2. Code Quality - Frontend (React/TypeScript)
+            - Proper TypeScript types (avoid 'any')
+            - React hooks used correctly
+            - Component composition and reusability
+            - Proper error boundaries
+            - Following existing component patterns
+            
+            ### 3. Structure & Architecture
+            - Each feature self-contained with its own models, service, and tools
+            - Shared components only for things used by multiple features
+            - Proper separation of concerns across services
+            - API endpoints follow RESTful conventions
+            
+            ### 4. Testing
+            - Unit tests co-located with code in tests/ folders
+            - Edge cases covered
+            - Mocking external dependencies
+            - Frontend: Vitest tests for components
+            - Backend: Pytest tests for services
+            
+            ### 5. Alpha Project Principles (from CLAUDE.md)
+            - No backwards compatibility needed - can break things
+            - Fail fast with detailed errors (not graceful failures)
+            - Remove dead code immediately
+            - Focus on functionality over production patterns
+            
+            ### 6. Security Considerations for External PRs
+            - Check for any attempts to access secrets or environment variables
+            - Look for suspicious network requests or data exfiltration
+            - Verify no hardcoded credentials or API keys
+            - Check for SQL injection vulnerabilities
+            - Review any file system operations
+            
+            ## Required Output Format
+            
+            ## Summary
+            [2-3 sentence overview of what the changes do and their impact]
+            
+            ## Security Review (External PR)
+            ⚠️ This is an external PR from a fork. Additional security checks performed:
+            - [ ] No unauthorized access to secrets/env vars
+            - [ ] No suspicious network requests
+            - [ ] No hardcoded credentials
+            - [ ] No SQL injection risks
+            - [ ] Safe file system operations
+            [List any security concerns found or state "No security issues found"]
+            
+            ## Issues Found
+            Total: [X critical, Y important, Z minor]
+            
+            ### 🔴 Critical (Must Fix)
+            [Issues that will break functionality or cause data loss]
+            - **[Issue Title]** - `path/to/file.py:123`
+              Problem: [What's wrong]
+              Fix: [Specific solution]
+            
+            ### 🟡 Important (Should Fix)
+            [Issues that impact user experience or code maintainability]
+            - **[Issue Title]** - `path/to/file.tsx:45`
+              Problem: [What's wrong]
+              Fix: [Specific solution]
+            
+            ### 🟢 Minor (Consider)
+            [Nice-to-have improvements]
+            - **[Suggestion]** - `path/to/file.py:67`
+              [Brief description and why it would help]
+            
+            ## Performance Considerations
+            - Database query efficiency (no N+1 queries)
+            - Frontend bundle size impacts
+            - Async/await usage in Python
+            - React re-render optimization
+            [List any performance issues or state "No performance concerns"]
+            
+            ## Good Practices Observed
+            - [Highlight what was done well]
+            - [Patterns that should be replicated]
+            
+            ## Test Coverage
+            **Current Coverage:** [Estimate based on what you see]
+            **Missing Tests:**
+            
+            1. **[Component/Function Name]**
+               - What to test: [Specific functionality]
+               - Why important: [Impact if it fails]
+               - Suggested test: [One sentence description]
+            
+            ## Recommendations
+            
+            **Merge Decision:**
+            - [ ] Ready to merge as-is
+            - [ ] Requires fixes before merging
+            - [ ] Needs security review by maintainer
+            
+            **Priority Actions:**
+            1. [Most important fix needed, if any]
+            2. [Second priority, if applicable]
+            
+            **External PR Note:**
+            This PR is from a fork. Maintainers should manually verify the changes before merging.
+            
+            ---
+            *Review based on Archon V2 Alpha guidelines and secure external PR process*
+
+  unauthorized-message:
+    needs: check-authorization
+    if: needs.check-authorization.outputs.authorized == 'false' && needs.check-authorization.outputs.trigger_phrase == '@claude-review-ext'
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Post Unauthorized Message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = '${{ needs.check-authorization.outputs.pr_number }}';
+            const commentAuthor = '${{ needs.check-authorization.outputs.comment_author }}';
+            
+            const comment = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(prNumber),
+              body: `❌ @${commentAuthor} - You are not authorized to trigger Claude reviews.\n\n` +
+                    `Only the following maintainers can trigger Claude: @Wirasm, @coleam00, @sean-eskerium\n\n` +
+                    `Please ask a maintainer for review.`
+            };
+            
+            await github.rest.issues.createComment(comment);
