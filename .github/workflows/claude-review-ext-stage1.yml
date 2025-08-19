@@ -16,12 +16,13 @@ jobs:
   collect-pr-info:
     # Only trigger on specific conditions
     # For PRs: always collect info
-    # For comments: only when @claude-review-ext is mentioned
+    # For comments: only when @claude-review-ext is mentioned by authorized users
     if: |
       github.event_name == 'pull_request' ||
       (
         (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
-        contains(github.event.comment.body, '@claude-review-ext')
+        contains(github.event.comment.body, '@claude-review-ext') &&
+        contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
       )
     
     runs-on: ubuntu-latest
@@ -236,3 +237,45 @@ jobs:
           echo "- **Large PR**: ${{ steps.validation.outputs.large_diff }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ PR information collected and uploaded as artifact for Stage 2 processing." >> $GITHUB_STEP_SUMMARY
+
+  unauthorized-message:
+    # Post message for unauthorized users
+    if: |
+      (
+        github.event_name == 'issue_comment' ||
+        github.event_name == 'pull_request_review_comment'
+      ) &&
+      contains(github.event.comment.body, '@claude-review-ext') &&
+      !contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Post unauthorized message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❌ @${context.actor} - You are not authorized to trigger Claude reviews on external PRs.\n\nOnly the following maintainers can trigger Claude: @Wirasm, @coleam00, @sean-eskerium\n\nPlease ask a maintainer for review.`
+            };
+            
+            if (context.eventName === 'issue_comment') {
+              await github.rest.issues.createComment({
+                ...comment,
+                issue_number: context.issue.number
+              });
+            } else if (context.eventName === 'pull_request_review_comment') {
+              await github.rest.pulls.createReplyForReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                comment_id: context.payload.comment.id,
+                body: comment.body
+              });
+            }
