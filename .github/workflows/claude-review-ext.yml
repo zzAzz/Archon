@@ -115,27 +115,35 @@ jobs:
       
       - name: Create Event Context for Claude
         run: |
-          # Create a fake event.json that Claude can use to understand the PR context
+          # Create a fake event.json that simulates an issue_comment event
           cat > /tmp/event.json << EOF
           {
-            "action": "opened",
-            "number": ${{ env.PR_NUMBER }},
-            "pull_request": {
+            "action": "created",
+            "issue": {
               "number": ${{ env.PR_NUMBER }},
               "title": "${{ env.PR_TITLE }}",
               "user": {
                 "login": "${{ env.PR_AUTHOR }}"
               },
-              "head": {
-                "sha": "${{ env.HEAD_SHA }}"
-              },
-              "base": {
-                "ref": "${{ env.PR_BASE_BRANCH }}"
+              "pull_request": {
+                "url": "https://api.github.com/repos/${{ github.repository }}/pulls/${{ env.PR_NUMBER }}"
+              }
+            },
+            "comment": {
+              "body": "@claude-review-ext",
+              "user": {
+                "login": "github-actions"
+              }
+            },
+            "repository": {
+              "name": "$(echo ${{ github.repository }} | cut -d'/' -f2)",
+              "owner": {
+                "login": "$(echo ${{ github.repository }} | cut -d'/' -f1)"
               }
             }
           }
           EOF
-          echo "Created event context for PR #${{ env.PR_NUMBER }}"
+          echo "Created issue_comment event context for PR #${{ env.PR_NUMBER }}"
       
       - name: Run Claude Code Review
         id: claude
@@ -143,7 +151,7 @@ jobs:
         timeout-minutes: 15
         env:
           # Set environment variables to provide PR context
-          GITHUB_EVENT_NAME: 'pull_request'
+          GITHUB_EVENT_NAME: 'issue_comment'
           GITHUB_EVENT_PATH: '/tmp/event.json'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -151,12 +159,15 @@ jobs:
           # Explicitly provide GitHub token since OIDC fails in workflow_run context
           github_token: ${{ secrets.GITHUB_TOKEN }}
           
-          # Use review mode for code review
-          mode: 'review'
-          
           # Use the external review trigger phrase
           trigger_phrase: "@claude-review-ext"
           
+          # Direct prompt to review the diff file
+          direct_prompt: |
+            Please review the code changes in the pr-diff.patch file and post your review as a comment on PR #${{ env.PR_NUMBER }}.
+            
+            The diff file contains all changes from the pull request. Analyze it thoroughly.
+            
           # Review-specific instructions (same as claude-review.yml)
           custom_instructions: |
             You are performing a CODE REVIEW for an EXTERNAL PULL REQUEST #${{ env.PR_NUMBER }}
@@ -165,11 +176,11 @@ jobs:
             ## Security Context
             You are running in a secure environment with access to repository secrets.
             The PR code has been fetched but NOT checked out for security reasons.
-            Review the changes in pr-diff.patch file.
+            Review the changes in pr-diff.patch file using the Read tool.
             
             ## Important
-            Since this is running via workflow_run, you should analyze the pr-diff.patch file that contains all the changes.
-            The diff file has already been created and is available in the current directory.
+            Start by reading the pr-diff.patch file to see all the changes.
+            Post your review as a comment on issue #${{ env.PR_NUMBER }}.
             
             ## Your Role
             You are reviewing code for Archon V2 Alpha, a local-first AI knowledge management system in early alpha stage.
