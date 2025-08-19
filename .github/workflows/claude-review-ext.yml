@@ -113,28 +113,63 @@ jobs:
               body: `🤖 **Claude Review (External PR) Starting...**\n\nAnalyzing PR changes in a secure environment. This may take a few minutes.`
             });
       
+      - name: Create Event Context for Claude
+        run: |
+          # Create a fake event.json that Claude can use to understand the PR context
+          cat > /tmp/event.json << EOF
+          {
+            "action": "opened",
+            "number": ${{ env.PR_NUMBER }},
+            "pull_request": {
+              "number": ${{ env.PR_NUMBER }},
+              "title": "${{ env.PR_TITLE }}",
+              "user": {
+                "login": "${{ env.PR_AUTHOR }}"
+              },
+              "head": {
+                "sha": "${{ env.HEAD_SHA }}"
+              },
+              "base": {
+                "ref": "${{ env.PR_BASE_BRANCH }}"
+              }
+            }
+          }
+          EOF
+          echo "Created event context for PR #${{ env.PR_NUMBER }}"
+      
       - name: Run Claude Code Review
         id: claude
         uses: anthropics/claude-code-action@beta
         timeout-minutes: 15
+        env:
+          # Set environment variables to provide PR context
+          GITHUB_EVENT_NAME: 'pull_request'
+          GITHUB_EVENT_PATH: '/tmp/event.json'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          
+          # Explicitly provide GitHub token since OIDC fails in workflow_run context
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Use review mode for code review
+          mode: 'review'
           
           # Use the external review trigger phrase
           trigger_phrase: "@claude-review-ext"
           
-          # Custom context for PR review
-          pr_number: ${{ env.PR_NUMBER }}
-          
           # Review-specific instructions (same as claude-review.yml)
           custom_instructions: |
-            You are performing a CODE REVIEW for an EXTERNAL PULL REQUEST. 
+            You are performing a CODE REVIEW for an EXTERNAL PULL REQUEST #${{ env.PR_NUMBER }}
             This is a secure two-stage review process for PRs from forks.
             
             ## Security Context
             You are running in a secure environment with access to repository secrets.
             The PR code has been fetched but NOT checked out for security reasons.
             Review the changes in pr-diff.patch file.
+            
+            ## Important
+            Since this is running via workflow_run, you should analyze the pr-diff.patch file that contains all the changes.
+            The diff file has already been created and is available in the current directory.
             
             ## Your Role
             You are reviewing code for Archon V2 Alpha, a local-first AI knowledge management system in early alpha stage.
